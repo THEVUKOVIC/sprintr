@@ -1,0 +1,99 @@
+s the request for the Savitzky-Golay Algorithm in R has come up several
+times, I here include my implementation based on code written for Matlab.
+Savitzky-Golay uses the pseudo-inverse pinv() of a matrix. There is an
+'generalized inverse' ginv() in the MASS package, but I use a simpler form
+because I didn't want to 'require' MASS any time I apply Savitzky-Golay.
+
+Savitzky-Golay is not only a good method for chemical engineering, it can
+successfully be applied to smooth process data. One approach is to determine
+the noise level in a time series (ACF, winGamma, ...) and then choose the
+parameter fl such that the difference between the time series and its
+Savitzky-Golay approximation reflects the noise level.
+
+I would be glad to hear about comments and improvements.
+
+Hans W. Borchers
+ABB Corporate Research
+
+P. S.:   Example:
+
+    t  <- sin(2*pi*(1:1000)/200)
+    t1 <- t + rnorm(1000)/10
+    t2 <- sav.gol(t1, 51)
+    plot(1:1000, t1)
+    lines(1:1000, t,  col="blue")
+    lines(1:1000, t2, col="red")
+
+# ----------------------------------------------------------------------
+#   Savitzky-Golay Algorithm
+# ----------------------------------------------------------------------
+# T2 <- sav.gol(T, fl, forder=4, dorder=0);
+#
+# Polynomial filtering method of Savitzky and Golay
+# See Numerical Recipes, 1992, Chapter 14.8, for details.
+#
+# T      = vector of signals to be filtered
+#          (the derivative is calculated for each ROW)
+# fl     = filter length (for instance fl = 51..151)
+# forder = filter order (2 = quadratic filter, 4= quartic)
+# dorder = derivative order (0 = smoothing, 1 = first derivative, etc.)
+#
+sav.gol <- function(T, fl, forder=4, dorder=0)
+{
+    m <- length(T)
+    dorder <- dorder + 1
+
+    # -- calculate filter coefficients --
+    fc <- (fl-1)/2                          # index: window left and right
+    X  <- outer(-fc:fc, 0:forder, FUN="^")  # polynomial terms and 
+coefficients
+    Y  <- pinv(X);                          # pseudoinverse
+
+    # -- filter via convolution and take care of the end points --
+    T2 <- convolve(T, rev(Y[dorder,]), type="o")    # convolve(...)
+    T2 <- T2[(fc+1):(length(T2)-fc)]
+}
+#-----------------------------------------------------------------------
+#   *** PseudoInvers of a Matrix ***
+#   using singular value decomposition
+#
+pinv <- function (A)
+{
+    s <- svd(A)
+    # D <- diag(s$d); Dinv <- diag(1/s$d)
+    # U <- s$u; V <- s$v
+    # A = U D V'
+    # X = V Dinv U'
+    s$v %*% diag(1/s$d) %*% t(s$u)
+}
+#-----------------------------------------------------------------------
+
+Hi,
+Savitzky and Golay were indeed pioneers of local least squares methods.
+However the SG smoother is
+hard to implement in practice because of missing values and problems at
+the boundary. Paul Eilers 
+at Leiden has presented a very nice method for smoothing series based on
+penalized least squares 
+known as Whittaker smoothing, develeoped in 1923 for life tables. Look at
+Analytical Chemistry (2003) 75, 3299-3304.
+Here is an R implementation that requires the SparseM package.
+
+The smoothing parameter lambda, controls the amount of smoothing, and
+"good" values can be found by cross validation.
+
+
+difsm <- function(y, lambda, d){
+# Smoothing with a finite difference penalty
+# y:      signal to be smoothed
+# lambda: smoothing parameter
+# d:      order of differences in penalty (generally 2)
+ 
+# Paul Eilers, 2002, ported from matlab by Nicholas Lewin-Koh
+  require(SparseM)
+  m <- length(y)
+  E <- as(m,"matrix.diag.csr")
+  D <- diff(E,differences=d)
+  B <- E + (lambda * t(D)%*%D)
+  z <- solve(B,y)
+  z
