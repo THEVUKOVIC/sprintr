@@ -1,7 +1,7 @@
 # FUNCTION phase_detection -----------------------------------------------------
-spr_onphasedetect <- function(input,
-                              filter.window = 33,
-                              cutoff.on = 0.5
+onphasedetect <- function(input,
+                          window = 33,
+                          cutoff = 0.5
 ) {
   
   # These should one day be replaced by my own filter functions
@@ -14,18 +14,18 @@ spr_onphasedetect <- function(input,
   input <- as.numeric(input)
 
   # Apply filters
-  input.med <- runmed(input, filter.window)
+  input.med <- runmed(input, window)
   
   input.med.sgolderiv1 <- sgolayfilt(input.med,
                                      p = 3,
-                                     n = filter.window,
+                                     n = window,
                                      m = 1,
                                      ts = 1
   )
   
   input.med.sgolderiv2 <- sgolayfilt(input.med,
                                      p = 3,
-                                     n = filter.window,
+                                     n = window,
                                      m = 2,
                                      ts = 1
   )
