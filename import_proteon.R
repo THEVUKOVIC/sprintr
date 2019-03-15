@@ -5,18 +5,44 @@
 # This function converts ProteON experiment files to tidy data, in preparation
 # for further analysis.
 
-import_proteon <- function(input_path) {
+import_proteon <- function(input_path = NULL,
+                           output_path = NULL,
+                           ligand.names   = as.character(c(1:6)),
+                           analyte.names  = as.character(c(1:6)),
+                           exp.id         = "unknown"
+){
   
+  require(tidyverse)
+  
+  if (length(input_path) == 0) {
+    input_path <- file.choose()
+  }
+  
+  # Wrong length of ligand analyte and exp.id vectors
+  if (length(ligand.names) != 6) {
+    stop("Number of ligand names not six.")
+  }
+    
+  if (length(analyte.names) != 6) {
+    stop("Number of analyte names not six.")
+  }
+    
+  if (length(exp.id) != 1) {
+    stop("Number of experiment identifier not 1.")
+  }
+  
+  # ZIP raw data extraction block ----------------------------------------------                             
+                             
   # Extract all filenames contained in ZIP file
   zip_list <- unzip(zipfile = input_path,
-                    list = TRUE,
-                    unzip = "internal"
+                    list    = TRUE,
+                    unzip   = "internal"
   )[[1]]
 
   # Unzip entire file
   unzip(zipfile = input_path,
-        list = FALSE,
-        unzip = "internal"
+        list    = FALSE,
+        unzip   = "internal"
   )
 
   # We only want the run raw data
@@ -29,48 +55,56 @@ import_proteon <- function(input_path) {
   filelist <- list()
   
   # Start counter to be used for reading in raw files
-  c <- 0
+  file.id <- 0
   
   # Loop over the number of injections
-  for(y in c(1:(length(filelist_pre)/36))){
-    # Loop over the number of channels
-    for (z in c(1:6)){
+  for(inj.id in c(1:(length(filelist_pre)/36))){
+    # Loop over the number of ligand channels
+    for (ana.id in c(1:6)){
       # Loop over the number of analytes
-      for (x in c(1:6)){
+      for (lig.id in c(1:6)){
         # Read in raw data
-        c <- c + 1
-        filelist[[c]] <- as.data.frame(read.csv(stringsAsFactors=FALSE,
-                                                file = filelist_pre[c],
-                                                header = FALSE,
-                                                skip = 7,
-                                                sep = ","
-                                       )
+        file.id <- file.id + 1
+        filelist[[file.id]] <- as_tibble(read.table(header = FALSE,
+                                                    sep = ",",
+                                                    quote = "",
+                                                    stringsAsFactors = F,
+                                                    skip = 7,
+                                                    fill = T,
+                                                    file = filelist_pre[file.id]
+                                         )
         )
-        # Skip some XML tags)
-        filelist[[c]] <- filelist[[c]][c(1:(length(filelist[[c]][[1]])-2)),c(1:3)]
+        # Skip some XML tags & select first three cols (time, spot, interspot)
+        file.length <- length(filelist[[file.id]][[1]])
+        filelist[[file.id]] <- filelist[[file.id]][c(1:(file.length-2)), c(1:3)]
         
         # Wrongly assigned text type from aforementioned tags
-        filelist[[c]][[1]] <- as.numeric(filelist[[c]][[1]])
+        filelist[[file.id]][[1]] <- as.numeric(filelist[[file.id]][[1]])
         
-        # Add injection number column
-        filelist[[c]] <- cbind(filelist[[c]],
-                               rep(y, length(filelist[[c]][[1]])))
+        filelist[[file.id]] <- cbind(filelist[[file.id]],
+                                     rep(lig.id,
+                                         length(filelist[[file.id]][[1]])
+                                     )
+        )
         
-        # Add ligand number column
-        filelist[[c]] <- cbind(filelist[[c]],
-                               rep(x, length(filelist[[c]][[1]])))
+        filelist[[file.id]] <- cbind(filelist[[file.id]],
+                                     rep(ana.id,
+                                         length(filelist[[file.id]][[1]])
+                                     )
+        )
         
-        # Add analyte number column
-        filelist[[c]] <- cbind(filelist[[c]],
-                               rep(z, length(filelist[[c]][[1]])))
+        filelist[[file.id]] <- cbind(filelist[[file.id]],
+                                     rep(inj.id,
+                                         length(filelist[[file.id]][[1]])
+                                     )
+        )
         
-        # Add column names so that we can refer to them by name and not ID number
-        names(filelist[[c]]) <- c("time",
-                                  "coated",
-                                  "uncoated",
-                                  "injection.id",
-                                  "ligand.id",
-                                  "analyte.id"
+        names(filelist[[file.id]]) <- c("time",
+                                        "coated",
+                                        "uncoated",
+                                        "lig.id",
+                                        "ana.id",
+                                        "inj.id"
         )
       }
     }
@@ -79,20 +113,31 @@ import_proteon <- function(input_path) {
   # Remove now unnecessary files
   file.remove(list = zip_list)
   
-  # Fusion to tidy dataset and calculation of interspot-corrected values
-  filelist.vertical <- do.call(rbind, filelist)
+  # Fusion to tidy dataset
+  vertical <- do.call(rbind, filelist)
+
+  # Naming of ligand, analyte and experiment block -----------------------------
+
+  # Naming of ligand and analyte
+  names(ligand.names) <- c(1:6)
+  names(analyte.names) <- c(1:6)
+
+  vertical <- vertical %>% 
+  mutate(lig.name = recode(lig.id, !!! ligand.names)) %>% 
+  mutate(ana.name = recode(ana.id, !!! analyte.names)) %>%
+  add_column(exp.id = rep(exp.id, nrow(.)),
+             .after = 3)
   
-  # Create additional column for each ligand-analyte combination
-  filelist.vertical <- cbind(filelist.vertical,
-                             paste("A",
-                                   filelist.vertical$analyte.id,
-                                   "_L",
-                                   filelist.vertical$ligand.id,
-                                   sep = ""
-                             )
-  )
-  namenumber <- length(names(filelist.vertical))
-  names(filelist.vertical)[namenumber] <- "unique"
+  # Creation of output file if it was specified --------------------------------
+  if (length(output_path) != 0) {
+    write.csv(vertical, paste(output_path,
+                              "/",
+                              exp.id,
+                              ".csv",
+                              sep = ""
+                        )
+    )
+  }
   
-  return(filelist.vertical)
+  return(vertical)
 }
