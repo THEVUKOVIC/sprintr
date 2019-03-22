@@ -1,7 +1,7 @@
 # FUNCTION phase_detection -----------------------------------------------------
-spr_onphasedetect <- function(input,
+spr_offphasedetect <- function(input,
                                window = 33,
-                               cutoff = 1
+                               cutoff = -1
 ) {
   
   # These should one day be replaced by my own filter functions
@@ -26,7 +26,7 @@ spr_onphasedetect <- function(input,
   )
   
   # Find regions with certain signal steepness over time
-  filt.input.med.sgolderiv1 <- which(input.med.sgolderiv1 > cutoff)
+  filt.input.med.sgolderiv1 <- which(input.med.sgolderiv1 < cutoff)
 
   # We calculate the differences of indices in order to exclude points too
   # close to each other, always the first found will be returned

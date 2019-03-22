@@ -1,12 +1,12 @@
 ################################################################################
-# FUNCTION input_path
+# FUNCTION import_proteon
 ################################################################################
 
 # This function converts ProteON experiment files to tidy data, in preparation
 # for further analysis.
 
-import_proteon <- function(input_path = NULL,
-                           output_path = NULL,
+import_proteon <- function(input.path = NULL,
+                           output.path = NULL,
                            ligand.names   = as.character(c(1:6)),
                            analyte.names  = as.character(c(1:6)),
                            exp.id         = "unknown"
@@ -14,11 +14,15 @@ import_proteon <- function(input_path = NULL,
   
   require(tidyverse)
   
-  if (length(input_path) == 0) {
-    input_path <- file.choose()
+  # If parameter not given by user, allow choosing, if path provided, check
+  # that it exists.
+  if (length(input.path) == 0) {
+    input.path <- file.choose()
+  } else if (file.exists(input.path) == F) {
+      stop("File does not exist.")
   }
-  
-  # Wrong length of ligand analyte and exp.id vectors
+      
+  # Error: wrong vector lengths for renaming purposes
   if (length(ligand.names) != 6) {
     stop("Number of ligand names not six.")
   }
@@ -28,19 +32,19 @@ import_proteon <- function(input_path = NULL,
   }
     
   if (length(exp.id) != 1) {
-    stop("Number of experiment identifier not 1.")
+    stop("Number of experiment identifier not one.")
   }
   
   # ZIP raw data extraction block ----------------------------------------------                             
                              
   # Extract all filenames contained in ZIP file
-  zip_list <- unzip(zipfile = input_path,
+  zip_list <- unzip(zipfile = input.path,
                     list    = TRUE,
                     unzip   = "internal"
   )[[1]]
 
   # Unzip entire file
-  unzip(zipfile = input_path,
+  unzip(zipfile = input.path,
         list    = FALSE,
         unzip   = "internal"
   )
@@ -117,9 +121,8 @@ import_proteon <- function(input_path = NULL,
   vertical <- do.call(rbind, filelist)
 
   # Naming of ligand, analyte and experiment block -----------------------------
-
-  # Naming of ligand and analyte
   names(ligand.names) <- c(1:6)
+  
   names(analyte.names) <- c(1:6)
 
   vertical <- vertical %>% 
@@ -128,16 +131,31 @@ import_proteon <- function(input_path = NULL,
   add_column(exp.id = rep(exp.id, nrow(.)),
              .after = 3)
   
+  # Signal zeroing block -------------------------------------------------------
+  vertical <- vertical %>% 
+    unite(unique, lig.id, ana.id, remove = F) %>% 
+    group_by(unique) %>% 
+    mutate(coated.zero = coated - median(coated[c(1:7)])) %>%
+    mutate(uncoated.zero = uncoated - median(uncoated[c(1:7)])) %>%
+    mutate(time.zero = time - first(time)) %>% 
+    ungroup() %>% 
+    select(-unique)
+  
   # Creation of output file if it was specified --------------------------------
-  if (length(output_path) != 0) {
-    write.csv(vertical, paste(output_path,
-                              "/",
-                              exp.id,
-                              ".csv",
-                              sep = ""
-                        )
+  if (length(output.path) != 0) {
+    
+    write.csv(vertical, 
+              paste(output.path,
+                    "/",
+                    exp.id,
+                    "_import_proteon.csv",
+                    sep = ""
+                    ),
+              row.names = F
     )
+    
   }
   
   return(vertical)
+  
 }
